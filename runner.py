@@ -1,78 +1,43 @@
-import importlib
-import json
+import subprocess
 import sys
-import io
+import json
 import time
-import traceback
-import logging
 
 sys.path.insert(0, "/function")
 
-log_buffer = io.StringIO()
+TIMEOUT_SECONDS = 10
 
-logging.basicConfig(
-    level=logging.INFO,
-    stream=log_buffer,
-    format="%(levelname)s: %(message)s"
-)
-
-stdout_buffer = io.StringIO()
-stderr_buffer = io.StringIO()
-
-old_stdout = sys.stdout
-old_stderr = sys.stderr
-
-sys.stdout = stdout_buffer
-sys.stderr = stderr_buffer
-
-start_time = time.monotonic()
-
-try:
-    raw_input = sys.stdin.read()
-    
-    if not raw_input:
-        raise ValueError("No input provided")
-
-    payload = json.loads(raw_input)
-
-    if payload.get("version", "") != "v1":
-        raise ValueError("Unsupported or missing version")
-
-    event = payload.get("event", {})
-    context = payload.get("context", {})
-
-    handler_path = sys.argv[1]
-
-    module_name, func_name = handler_path.rsplit(".", 1)
-
-    module = importlib.import_module(module_name)
-
-    handler = getattr(module, func_name)
+def run(handler_path, event):
+    proc = subprocess.Popen(
+        [sys.executable, "user_runner.py", handler_path],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
 
     try:
-        result = handler(event, {})
-        error = None
-    except Exception:
-        result = None
-        error = traceback.format_exc()
+        stdout, stderr = proc.communicate(
+            input=json.dumps(event),
+            timeout=TIMEOUT_SECONDS
+        )
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return {
+            "result": None,
+            "error": "Execution Timed out",
+            "duration_ms": TIMEOUT_SECONDS
+        }
 
-except Exception:
-    result = None
-    error = traceback.format_exc()
+    if stderr:
+        return {
+            "result": None,
+            "error": stderr
+        }
 
-finally:
-    sys.stdout = old_stdout
-    sys.stderr = old_stderr
+    return json.loads(stdout)
 
-duration_ms = int((time.monotonic() -  start_time)*1000)
-
-logs = (stdout_buffer.getvalue() + stderr_buffer.getvalue() + log_buffer.getvalue())
-
-response = {
-    "result": result,
-    "logs": logs,
-    "error": error,
-    "duration_ms": duration_ms
-}
-
-print(json.dumps(response))
+if __name__ == "__main__":
+    handler = sys.argv[1]
+    event = json.loads(sys.stdin.read() or "{}")
+    print(json.dumps(run(handler, event)))
