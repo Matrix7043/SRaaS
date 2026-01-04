@@ -28,20 +28,19 @@ sys.stderr = stderr_buffer
 start_time = time.monotonic()
 
 try:
-    raw_input = sys.stdin.read()
-    
-    if not raw_input:
-        raise ValueError("No input provided")
 
-    payload = json.loads(raw_input)
+    handler_path = sys.argv[1]
+    
+    path = sys.argv[2]
+    
+    with open(path) as f:
+        payload = json.load(f)
 
     if payload.get("version", "") != "v1":
         raise ValueError("Unsupported or missing version")
 
     event = payload.get("event", {})
     context = payload.get("context", {})
-
-    handler_path = sys.argv[1]
 
     module_name, func_name = handler_path.rsplit(".", 1)
 

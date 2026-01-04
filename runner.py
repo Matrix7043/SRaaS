@@ -7,9 +7,9 @@ sys.path.insert(0, "/function")
 
 TIMEOUT_SECONDS = 10
 
-def run(handler_path, event):
+def run(handler_path, file):
     proc = subprocess.Popen(
-        [sys.executable, "user_runner.py", handler_path],
+        [sys.executable, "user_runner.py", handler_path, file],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -18,7 +18,6 @@ def run(handler_path, event):
 
     try:
         stdout, stderr = proc.communicate(
-            input=json.dumps(event),
             timeout=TIMEOUT_SECONDS
         )
     except subprocess.TimeoutExpired:
@@ -39,5 +38,18 @@ def run(handler_path, event):
 
 if __name__ == "__main__":
     handler = sys.argv[1]
-    event = json.loads(sys.stdin.read() or "{}")
-    print(json.dumps(run(handler, event)))
+    file = sys.argv[2]
+    try:
+        with open(file) as f:
+            json.load(f)
+    except Exception as e:
+        print(e)
+        sys.exit(1)
+    if not file or not handler:
+        error = {
+            "result": None,
+            "error": "handler or file is empty"
+        }
+        print(json.dumps(error))
+        sys.exit(1)
+    print(json.dumps(run(handler, file)))
