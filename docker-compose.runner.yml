@@ -4,7 +4,7 @@
 services:
   scaas-runner:
     build:
-      context: ./scaas-runner
+      context: .
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
@@ -12,7 +12,7 @@ services:
       # Mount Docker socket so runner can manage sibling containers
       - /var/run/docker.sock:/var/run/docker.sock
       # Shared staging directory so mounted file paths resolve on the host too
-      - /tmp/scaas:/tmp/scaas
+      - ~/scaas-data:/tmp/scaas
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped

@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 
-from app.models import (
+from .models import (
     DeployRequest,
     DeployResponse,
     InvokeRequest,
@@ -22,8 +22,8 @@ from app.models import (
     DeleteResponse,
     HealthResponse,
 )
-from app.docker_service import DockerService
-from app.store import DeploymentStore
+from .docker_service import DockerService
+from .store import DeploymentStore
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
