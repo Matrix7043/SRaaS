@@ -18,9 +18,7 @@ This matches the ContainerService stub in Spring Boot:
 
 import json
 import logging
-import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +92,9 @@ class DockerService:
             "sleep", "infinity",
         ]
 
+        if not USER_RUNNER.exists():
+            raise RuntimeError(f"Runner file not found: {USER_RUNNER}")
+
         logger.info("Starting container: %s", container_name)
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
@@ -125,11 +126,17 @@ class DockerService:
 
         # Write the payload into the container's /tmp (the only writable dir)
         write_cmd = [
-            "docker", "exec", container_name,
+            "docker", "exec", "-i", container_name,
             "sh", "-c",
-            f"echo '{payload}' > /tmp/input.json",
+            "cat > /tmp/input.json",
         ]
-        wr = subprocess.run(write_cmd, capture_output=True, text=True, timeout=5)
+        wr = subprocess.run(
+            write_cmd,
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         if wr.returncode != 0:
             raise RuntimeError(f"Failed to write payload: {wr.stderr.strip()}")
 
@@ -140,12 +147,15 @@ class DockerService:
             entry_point,
             "/tmp/input.json",
         ]
-        result = subprocess.run(
-            exec_cmd,
-            capture_output=True,
-            text=True,
-            timeout=EXEC_TIMEOUT,
-        )
+        try:
+            result = subprocess.run(
+                exec_cmd,
+                capture_output=True,
+                text=True,
+                timeout=EXEC_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError("Function execution timed out") from exc
 
         if result.returncode != 0 and not result.stdout.strip():
             raise RuntimeError(

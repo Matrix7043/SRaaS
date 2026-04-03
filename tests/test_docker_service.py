@@ -163,9 +163,7 @@ class TestInvokeFunction:
             m.returncode = 0
             m.stderr = ""
             if call_count["n"] == 1:
-                # Capture what was written to the container
-                shell_cmd = " ".join(cmd)
-                written_payloads.append(shell_cmd)
+                written_payloads.append(kwargs["input"])
                 m.stdout = ""
             else:
                 m.stdout = json.dumps({"result": None, "logs": "", "error": None, "duration_ms": 0})
@@ -187,7 +185,7 @@ class TestInvokeFunction:
             raise subprocess.TimeoutExpired(cmd, 15)
 
         with patch("subprocess.run", side_effect=fake_run):
-            with pytest.raises(subprocess.TimeoutExpired):
+            with pytest.raises(TimeoutError):
                 svc.invoke_function("c1", "main.handler", {}, {})
 
     def test_invoke_returns_error_dict_on_bad_json_output(self, svc):
