@@ -65,6 +65,7 @@ class DockerService:
         Returns the container name.
         """
         container_name = deployment_id  # reuse as container name
+        runner_path = code_path.parent / "user_runner.py"
 
         # Kill any stale container with the same name first
         self._remove_container_if_exists(container_name)
@@ -86,14 +87,14 @@ class DockerService:
             "--network", "none",
             # Mount user code and runner (read-only)
             "-v", f"{code_path.resolve()}:/function/main.py:ro",
-            "-v", f"{USER_RUNNER.resolve()}:/function/user_runner.py:ro",
+            "-v", f"{runner_path.resolve()}:/function/user_runner.py:ro",
             DOCKER_IMAGE,
             # Keep container alive waiting for exec calls
             "sleep", "infinity",
         ]
 
-        if not USER_RUNNER.exists():
-            raise RuntimeError(f"Runner file not found: {USER_RUNNER}")
+        if not runner_path.exists():
+            raise RuntimeError(f"Runner file not found: {runner_path}")
 
         logger.info("Starting container: %s", container_name)
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)

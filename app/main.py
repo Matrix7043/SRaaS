@@ -6,6 +6,7 @@ Handles deploying and invoking sandboxed Python functions inside Docker containe
 import shutil
 import hashlib
 import logging
+import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -18,7 +19,7 @@ from .models import (
     DeleteResponse,
     HealthResponse,
 )
-from .docker_service import DockerService
+from .docker_service import DockerService, USER_RUNNER
 from .store import DeploymentStore
 
 logging.basicConfig(level=logging.INFO)
@@ -26,8 +27,9 @@ logger = logging.getLogger(__name__)
 
 store = DeploymentStore()
 docker_svc = DockerService()
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-STAGING_ROOT = PROJECT_ROOT / ".scaas" / "staging"
+# This path must be identical on the host and inside the runner container
+# because `docker run -v` resolves bind mount sources on the host daemon.
+STAGING_ROOT = Path(os.environ.get("SCAAS_STAGING_DIR", "/tmp/scaas/staging"))
 
 
 def _cleanup_existing_deployments(function_id: str) -> None:
@@ -47,6 +49,14 @@ def _cleanup_existing_deployments(function_id: str) -> None:
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     logger.info("SCaaS Runner starting up")
+    if docker_svc.is_docker_available():
+        logger.info("Docker daemon reachable - ready to deploy functions")
+    else:
+        logger.error(
+            "Docker daemon NOT reachable. "
+            "Ensure /var/run/docker.sock is mounted and docker-ce-cli is installed. "
+            "Deploy endpoints will fail until this is resolved."
+        )
     yield
     logger.info("SCaaS Runner shutting down")
 
@@ -97,11 +107,12 @@ async def deploy(
     deployment_id = f"deployment_{function_id}_{hash_code}"
     _cleanup_existing_deployments(function_id)
 
-    # Stage uploaded code under the project so Docker Desktop can mount it.
+    # Stage uploaded code under a path mirrored on the host and in the runner.
     staging_dir = STAGING_ROOT / deployment_id
     staging_dir.mkdir(parents=True, exist_ok=True)
     code_path = staging_dir / "main.py"
     code_path.write_bytes(content)
+    shutil.copy2(USER_RUNNER, staging_dir / "user_runner.py")
 
     try:
         container_name = docker_svc.start_container(

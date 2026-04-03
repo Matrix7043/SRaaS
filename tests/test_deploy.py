@@ -4,6 +4,7 @@ Tests for POST /deploy
 
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -58,6 +59,16 @@ class TestDeploy:
         assert record["function_id"] == FUNCTION_ID
         assert record["hash_code"] == SAMPLE_HASH
         assert record["entry_point"] == "main.handler"
+
+    def test_deploy_stages_user_runner_next_to_uploaded_code(self, client, mock_docker):
+        client.post(
+            "/deploy",
+            params={"function_id": FUNCTION_ID, "hash_code": SAMPLE_HASH},
+            files={"file": ("main.py", SAMPLE_CODE, "text/plain")},
+        )
+        code_path = mock_docker["start"].call_args.kwargs["code_path"]
+        runner_path = Path(code_path).parent / "user_runner.py"
+        assert runner_path.exists()
 
     def test_deploy_rejects_non_py_file(self, client, mock_docker):
         resp = client.post(

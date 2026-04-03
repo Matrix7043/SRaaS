@@ -46,7 +46,8 @@ class TestStartContainer:
         return m
 
     def test_start_container_returns_deployment_id_as_name(self, svc):
-        with patch("subprocess.run", return_value=self._mock_run_success()):
+        with patch("subprocess.run", return_value=self._mock_run_success()), \
+             patch.object(Path, "exists", return_value=True):
             name = svc.start_container(
                 deployment_id="dep_abc",
                 code_path=FAKE_CODE_PATH,
@@ -66,7 +67,8 @@ class TestStartContainer:
             m.stderr = ""
             return m
 
-        with patch("subprocess.run", side_effect=fake_run):
+        with patch("subprocess.run", side_effect=fake_run), \
+             patch.object(Path, "exists", return_value=True):
             svc.start_container(
                 deployment_id="dep_abc",
                 code_path=FAKE_CODE_PATH,
@@ -91,7 +93,8 @@ class TestStartContainer:
             m.stderr = ""
             return m
 
-        with patch("subprocess.run", side_effect=fake_run):
+        with patch("subprocess.run", side_effect=fake_run), \
+             patch.object(Path, "exists", return_value=True):
             svc.start_container("dep_x", FAKE_CODE_PATH, "main.h", 0.5, 128, 32)
 
         run_cmd = captured["cmd"]
@@ -108,7 +111,8 @@ class TestStartContainer:
             m.stderr = ""
             return m
 
-        with patch("subprocess.run", side_effect=fake_run):
+        with patch("subprocess.run", side_effect=fake_run), \
+             patch.object(Path, "exists", return_value=True):
             svc.start_container("dep_x", FAKE_CODE_PATH, "main.h", 1.5, 512, 48)
 
         run_cmd = " ".join(captured["cmd"])
@@ -116,13 +120,38 @@ class TestStartContainer:
         assert "--memory 512m" in run_cmd
         assert "--pids-limit 48" in run_cmd
 
+    def test_start_container_mounts_staged_user_runner(self, svc):
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            m = MagicMock()
+            m.returncode = 0
+            m.stderr = ""
+            return m
+
+        with patch("subprocess.run", side_effect=fake_run), \
+             patch.object(Path, "exists", return_value=True):
+            svc.start_container("dep_x", FAKE_CODE_PATH, "main.h", 0.5, 128, 32)
+
+        run_cmd = captured["cmd"]
+        mount_idx = run_cmd.index("-v", run_cmd.index("-v") + 1)
+        assert run_cmd[mount_idx + 1] == "/tmp/scaas/staging/dep_123/user_runner.py:/function/user_runner.py:ro"
+
     def test_start_container_raises_on_docker_error(self, svc):
         m = MagicMock()
         m.returncode = 1
         m.stderr = "image not found"
-        with patch("subprocess.run", return_value=m):
+        with patch("subprocess.run", return_value=m), \
+             patch.object(Path, "exists", return_value=True):
             with pytest.raises(RuntimeError, match="docker run failed"):
                 svc.start_container("dep_x", FAKE_CODE_PATH, "main.h", 0.5, 256, 64)
+
+    def test_start_container_raises_when_staged_runner_missing(self, svc):
+        with patch("subprocess.run") as mock_run:
+            with pytest.raises(RuntimeError, match="Runner file not found"):
+                svc.start_container("dep_x", FAKE_CODE_PATH, "main.h", 0.5, 256, 64)
+        mock_run.assert_called_once()
 
 
 class TestInvokeFunction:

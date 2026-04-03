@@ -1,5 +1,6 @@
-# Add this service to your existing docker-compose.yml
-# It mounts the host Docker socket so the runner can spawn sibling containers.
+# Add this service to your existing docker-compose.yml.
+# The staging path must be identical on the host and inside the runner
+# so bind mounts created by the host Docker daemon resolve correctly.
 
 services:
   scaas-runner:
@@ -11,8 +12,9 @@ services:
     volumes:
       # Mount Docker socket so runner can manage sibling containers
       - /var/run/docker.sock:/var/run/docker.sock
-      # Shared staging directory so mounted file paths resolve on the host too
-      - ~/scaas-data:/tmp/scaas
+      # Host and container paths must stay identical
+      - ${HOME}/scaas-data:${HOME}/scaas-data
     environment:
       - PYTHONUNBUFFERED=1
+      - SCAAS_STAGING_DIR=${HOME}/scaas-data/staging
     restart: unless-stopped
