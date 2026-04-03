@@ -3,8 +3,6 @@ SCaaS Python Runner Microservice
 Handles deploying and invoking sandboxed Python functions inside Docker containers.
 """
 
-import os
-import uuid
 import shutil
 import hashlib
 import logging
@@ -12,8 +10,6 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
-from fastapi.responses import JSONResponse
-
 from .models import (
     DeployRequest,
     DeployResponse,
@@ -30,6 +26,22 @@ logger = logging.getLogger(__name__)
 
 store = DeploymentStore()
 docker_svc = DockerService()
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+STAGING_ROOT = PROJECT_ROOT / ".scaas" / "staging"
+
+
+def _cleanup_existing_deployments(function_id: str) -> None:
+    for deployment_id in store.all_ids():
+        record = store.get(deployment_id)
+        if record is None or record["function_id"] != function_id:
+            continue
+
+        store.remove(deployment_id)
+        try:
+            docker_svc.stop_container(record["container_name"])
+        except Exception as exc:
+            logger.warning("Could not stop existing deployment %s: %s", deployment_id, exc)
+        shutil.rmtree(record["staging_dir"], ignore_errors=True)
 
 
 @asynccontextmanager
@@ -83,9 +95,10 @@ async def deploy(
         )
 
     deployment_id = f"deployment_{function_id}_{hash_code}"
+    _cleanup_existing_deployments(function_id)
 
-    # Write the uploaded file to a temp staging directory
-    staging_dir = Path(f"/tmp/scaas/staging/{deployment_id}")
+    # Stage uploaded code under the project so Docker Desktop can mount it.
+    staging_dir = STAGING_ROOT / deployment_id
     staging_dir.mkdir(parents=True, exist_ok=True)
     code_path = staging_dir / "main.py"
     code_path.write_bytes(content)
